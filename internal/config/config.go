@@ -3,6 +3,7 @@ package config
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"strconv"
 )
@@ -12,6 +13,7 @@ type Config struct {
 	DatabaseURL string
 	Port        int
 	APIKey      string
+	BaseURL     string
 	RegistryURL string
 }
 
@@ -21,11 +23,15 @@ func Load() Config {
 		apiKey = generateAPIKey()
 	}
 
+	port := getEnvInt("BRIDGE_PORT", 7777)
+	baseURL := getEnv("BRIDGE_BASE_URL", fmt.Sprintf("http://localhost:%d", port))
+
 	return Config{
 		DBType:      getEnv("BRIDGE_DB", "sqlite"),
 		DatabaseURL: getEnv("DATABASE_URL", "./opengaebi.db"),
-		Port:        getEnvInt("BRIDGE_PORT", 7777),
+		Port:        port,
 		APIKey:      apiKey,
+		BaseURL:     baseURL,
 		RegistryURL: getEnv("REGISTRY_URL", ""),
 	}
 }

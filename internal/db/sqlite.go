@@ -27,6 +27,8 @@ func NewSQLite(path string) (*SQLiteDB, error) {
 }
 
 func (s *SQLiteDB) migrate() error {
+	// WAL 모드: 동시 읽기/쓰기 성능 향상. :memory: DB에서는 무시됨.
+	s.db.Exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000`)
 	_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS peers (
 			id        TEXT PRIMARY KEY,
@@ -39,6 +41,25 @@ func (s *SQLiteDB) migrate() error {
 			last_seen DATETIME
 		);
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_peers_workspace_name ON peers(workspace, name);
+
+		CREATE TABLE IF NOT EXISTS messages (
+			id         TEXT PRIMARY KEY,
+			from_peer  TEXT NOT NULL,
+			to_peer    TEXT NOT NULL,
+			workspace  TEXT NOT NULL,
+			payload    TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_messages_to ON messages(workspace, to_peer, created_at);
+
+		CREATE TABLE IF NOT EXISTS artifacts (
+			id         TEXT PRIMARY KEY,
+			workspace  TEXT NOT NULL,
+			name       TEXT NOT NULL,
+			kind       TEXT NOT NULL DEFAULT 'text',
+			content    BLOB,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
 	`)
 	return err
 }
@@ -95,6 +116,73 @@ func (s *SQLiteDB) DeletePeer(ctx context.Context, id string) error {
 
 func (s *SQLiteDB) Close() error {
 	return s.db.Close()
+}
+
+func (s *SQLiteDB) SendMessage(ctx context.Context, msg Message) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO messages (id, from_peer, to_peer, workspace, payload) VALUES (?,?,?,?,?)`,
+		msg.ID, msg.FromPeer, msg.ToPeer, msg.Workspace, msg.Payload)
+	return err
+}
+
+func (s *SQLiteDB) PollMessages(ctx context.Context, workspace, toPeer string, limit int) ([]Message, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, from_peer, to_peer, workspace, payload, created_at
+		 FROM messages WHERE workspace=? AND to_peer=? ORDER BY created_at ASC LIMIT ?`,
+		workspace, toPeer, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var msgs []Message
+	for rows.Next() {
+		var m Message
+		var createdAt sql.NullTime
+		if err := rows.Scan(&m.ID, &m.FromPeer, &m.ToPeer, &m.Workspace, &m.Payload, &createdAt); err != nil {
+			return nil, err
+		}
+		if createdAt.Valid {
+			m.CreatedAt = createdAt.Time
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
+func (s *SQLiteDB) DeleteMessage(ctx context.Context, id string) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM messages WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("message not found: %s", id)
+	}
+	return nil
+}
+
+func (s *SQLiteDB) SaveArtifact(ctx context.Context, a Artifact) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO artifacts (id, workspace, name, kind, content) VALUES (?,?,?,?,?)`,
+		a.ID, a.Workspace, a.Name, a.Kind, a.Content)
+	return err
+}
+
+func (s *SQLiteDB) GetArtifact(ctx context.Context, id string) (*Artifact, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, workspace, name, kind, content, created_at FROM artifacts WHERE id=?`, id)
+	var a Artifact
+	var createdAt sql.NullTime
+	if err := row.Scan(&a.ID, &a.Workspace, &a.Name, &a.Kind, &a.Content, &createdAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("artifact not found: %s", id)
+		}
+		return nil, err
+	}
+	if createdAt.Valid {
+		a.CreatedAt = createdAt.Time
+	}
+	return &a, nil
 }
 
 type scanner interface {
