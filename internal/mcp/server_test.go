@@ -100,3 +100,98 @@ func TestMCP_AskAgent(t *testing.T) {
 		t.Fatalf("expected content: %+v", result)
 	}
 }
+
+func TestMCP_FindAgents_ByTags(t *testing.T) {
+	store, err := db.NewSQLite(":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+	srv := mcp.New(store)
+
+	ctx := t.Context()
+	peers := []db.Peer{
+		{ID: "p1", Workspace: "ws", Name: "worker-go", Kind: "agent", Tags: []string{"role:worker", "lang:go"}},
+		{ID: "p2", Workspace: "ws", Name: "worker-py", Kind: "agent", Tags: []string{"role:worker", "lang:python"}},
+		{ID: "p3", Workspace: "ws", Name: "coord", Kind: "agent", Tags: []string{"role:coordinator"}},
+	}
+	for _, p := range peers {
+		store.RegisterPeer(ctx, p)
+	}
+
+	// role:worker → 2 results
+	resp := mcpRPC(t, srv, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"find_agents","arguments":{"workspace":"ws","tags":["role:worker"]}}}`)
+	result, ok := resp["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("no result: %+v", resp)
+	}
+	content, ok := result["content"].([]any)
+	if !ok || len(content) == 0 {
+		t.Fatalf("expected content: %+v", result)
+	}
+	text := content[0].(map[string]any)["text"].(string)
+	if !contains(text, "2") {
+		t.Errorf("expected 2 agents in text, got: %s", text)
+	}
+
+	// role:worker + lang:go → 1 result
+	resp2 := mcpRPC(t, srv, `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"find_agents","arguments":{"workspace":"ws","tags":["role:worker","lang:go"]}}}`)
+	result2, ok := resp2["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("no result2: %+v", resp2)
+	}
+	content2 := result2["content"].([]any)
+	text2 := content2[0].(map[string]any)["text"].(string)
+	if !contains(text2, "worker-go") {
+		t.Errorf("expected worker-go in text, got: %s", text2)
+	}
+}
+
+func TestMCP_PublishChange_Broadcast(t *testing.T) {
+	store, err := db.NewSQLite(":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+	srv := mcp.New(store)
+
+	resp := mcpRPC(t, srv, `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"publish_change","arguments":{"workspace":"ws","from":"session-a","name":"schema.json","content":"{}","broadcast":true}}}`)
+	result, ok := resp["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("no result: %+v", resp)
+	}
+	content, ok := result["content"].([]any)
+	if !ok || len(content) == 0 {
+		t.Fatalf("expected content: %+v", result)
+	}
+	text := content[0].(map[string]any)["text"].(string)
+	if !contains(text, "브로드캐스트") {
+		t.Errorf("expected broadcast confirmation in text, got: %s", text)
+	}
+
+	// broadcast message must be pollable by any agent
+	ctx := t.Context()
+	msgs, err := store.PollMessages(ctx, "ws", "any-agent", 10)
+	if err != nil {
+		t.Fatalf("PollMessages: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 broadcast message, got %d", len(msgs))
+	}
+	if msgs[0].ToPeer != "" {
+		t.Errorf("expected empty ToPeer for broadcast, got: %s", msgs[0].ToPeer)
+	}
+}
+
+func contains(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || len(sub) == 0 || containsStr(s, sub))
+}
+
+func containsStr(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
