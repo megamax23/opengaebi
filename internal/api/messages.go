@@ -21,8 +21,8 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	if req.Workspace == "" || req.To == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workspace and to are required"})
+	if req.Workspace == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workspace is required"})
 		return
 	}
 	if len(req.Payload) > 64*1024 {
