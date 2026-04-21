@@ -7,6 +7,8 @@ services:
       BRIDGE_DB: sqlite
       DATABASE_URL: /data/opengaebi.db
       BRIDGE_PORT: "7777"
+      BRIDGE_API_KEY: ""
+      BRIDGE_BASE_URL: "http://localhost:7777"
     volumes:
       - bridge-data:/data
 
@@ -18,6 +20,8 @@ services:
       BRIDGE_DB: postgres
       DATABASE_URL: postgresql://opengaebi:password@postgres:5432/opengaebi
       BRIDGE_PORT: "7777"
+      BRIDGE_API_KEY: ""
+      BRIDGE_BASE_URL: "http://localhost:7778"
     depends_on:
       - postgres
     profiles:
