@@ -1,0 +1,41 @@
+services:
+  bridge:
+    build: .
+    ports:
+      - "7777:7777"
+    environment:
+      BRIDGE_DB: sqlite
+      DATABASE_URL: /data/opengaebi.db
+      BRIDGE_PORT: "7777"
+    volumes:
+      - bridge-data:/data
+
+  bridge-postgres:
+    build: .
+    ports:
+      - "7778:7777"
+    environment:
+      BRIDGE_DB: postgres
+      DATABASE_URL: postgresql://opengaebi:password@postgres:5432/opengaebi
+      BRIDGE_PORT: "7777"
+    depends_on:
+      - postgres
+    profiles:
+      - postgres
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: opengaebi
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: opengaebi
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    profiles:
+      - postgres
+
+volumes:
+  bridge-data:
+  pg-data:
