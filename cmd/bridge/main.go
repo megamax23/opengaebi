@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 
+	"github.com/opengaebi/opengaebi/internal/api"
 	"github.com/opengaebi/opengaebi/internal/config"
 	"github.com/opengaebi/opengaebi/internal/db"
 )
@@ -19,15 +19,15 @@ func main() {
 	}
 	defer store.Close()
 
+	srv := api.New(store, cfg.APIKey, cfg.BaseURL)
+
 	log.Printf("Opengaebi Bridge starting on :%d (db=%s)", cfg.Port, cfg.DBType)
-	log.Printf("API Key: %s", cfg.APIKey)
+	keyPreview := cfg.APIKey[:min(8, len(cfg.APIKey))]
+	log.Printf("API Key: %s***", keyPreview)
+	log.Printf("Base URL: %s", cfg.BaseURL)
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, `{"status":"ok"}`)
-	})
-
-	addr := fmt.Sprintf(":%d", cfg.Port)
-	if err := http.ListenAndServe(addr, nil); err != nil {
+	if err := http.ListenAndServe(srv.Addr(cfg.Port), srv.Handler()); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }
+
