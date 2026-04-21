@@ -6,17 +6,27 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/opengaebi/opengaebi/internal/a2a"
 	"github.com/opengaebi/opengaebi/internal/db"
+	"github.com/opengaebi/opengaebi/internal/mcp"
 )
 
 type Server struct {
 	db      db.DB
 	apiKey  string
 	baseURL string
+	mcpSrv  *mcp.Server
+	a2aHndl *a2a.Handler
 }
 
 func New(store db.DB, apiKey string, baseURL string) *Server {
-	return &Server{db: store, apiKey: apiKey, baseURL: baseURL}
+	return &Server{
+		db:      store,
+		apiKey:  apiKey,
+		baseURL: baseURL,
+		mcpSrv:  mcp.New(store),
+		a2aHndl: a2a.New(store, baseURL),
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -24,6 +34,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	// REST API (auth required)
 	mux.Handle("POST /v1/agents", s.AuthMiddleware(http.HandlerFunc(s.registerAgent)))
 	mux.Handle("GET /v1/agents", s.AuthMiddleware(http.HandlerFunc(s.listAgents)))
 	mux.Handle("DELETE /v1/agents/{id}", s.AuthMiddleware(http.HandlerFunc(s.deleteAgent)))
@@ -32,6 +44,13 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("DELETE /v1/messages/{id}", s.AuthMiddleware(http.HandlerFunc(s.deleteMessage)))
 	mux.Handle("POST /v1/artifacts", s.AuthMiddleware(http.HandlerFunc(s.saveArtifact)))
 	mux.Handle("GET /v1/artifacts/{id}", s.AuthMiddleware(http.HandlerFunc(s.getArtifact)))
+
+	// MCP (no auth — clients use their own session context)
+	mux.Handle("POST /mcp", s.mcpSrv)
+
+	// A2A (no auth — open protocol)
+	s.a2aHndl.Register(mux)
+
 	return mux
 }
 
