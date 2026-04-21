@@ -84,3 +84,84 @@ func TestSQLite_DeletePeer(t *testing.T) {
 		t.Error("expected peer to be deleted")
 	}
 }
+
+func TestSQLite_SendAndPollMessages(t *testing.T) {
+	store, err := db.NewSQLite(":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	msg := db.Message{
+		ID:        "msg-1",
+		FromPeer:  "agent-a",
+		ToPeer:    "agent-b",
+		Workspace: "gowit",
+		Payload:   `{"text":"hello"}`,
+	}
+
+	if err := store.SendMessage(ctx, msg); err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+
+	msgs, err := store.PollMessages(ctx, "gowit", "agent-b", 10)
+	if err != nil {
+		t.Fatalf("PollMessages: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	if msgs[0].Payload != msg.Payload {
+		t.Errorf("payload mismatch: got %s", msgs[0].Payload)
+	}
+}
+
+func TestSQLite_DeleteMessage(t *testing.T) {
+	store, err := db.NewSQLite(":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	store.SendMessage(ctx, db.Message{ID: "del-msg", FromPeer: "a", ToPeer: "b", Workspace: "ws", Payload: "x"})
+
+	if err := store.DeleteMessage(ctx, "del-msg"); err != nil {
+		t.Fatalf("DeleteMessage: %v", err)
+	}
+
+	msgs, _ := store.PollMessages(ctx, "ws", "b", 10)
+	if len(msgs) != 0 {
+		t.Error("expected 0 messages after delete")
+	}
+}
+
+func TestSQLite_SaveAndGetArtifact(t *testing.T) {
+	store, err := db.NewSQLite(":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	art := db.Artifact{
+		ID:        "art-1",
+		Workspace: "gowit",
+		Name:      "schema.json",
+		Kind:      "code",
+		Content:   []byte(`{"version":1}`),
+	}
+
+	if err := store.SaveArtifact(ctx, art); err != nil {
+		t.Fatalf("SaveArtifact: %v", err)
+	}
+
+	got, err := store.GetArtifact(ctx, "art-1")
+	if err != nil {
+		t.Fatalf("GetArtifact: %v", err)
+	}
+	if string(got.Content) != string(art.Content) {
+		t.Errorf("content mismatch: got %s", got.Content)
+	}
+}

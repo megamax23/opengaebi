@@ -40,7 +40,26 @@ func (p *PostgresDB) migrate(ctx context.Context) error {
 			port      INTEGER,
 			last_seen TIMESTAMPTZ,
 			UNIQUE(workspace, name)
-		)
+		);
+
+		CREATE TABLE IF NOT EXISTS messages (
+			id         TEXT PRIMARY KEY,
+			from_peer  TEXT NOT NULL,
+			to_peer    TEXT NOT NULL,
+			workspace  TEXT NOT NULL,
+			payload    TEXT,
+			created_at TIMESTAMPTZ DEFAULT NOW()
+		);
+		CREATE INDEX IF NOT EXISTS idx_messages_to ON messages(workspace, to_peer, created_at);
+
+		CREATE TABLE IF NOT EXISTS artifacts (
+			id         TEXT PRIMARY KEY,
+			workspace  TEXT NOT NULL,
+			name       TEXT NOT NULL,
+			kind       TEXT NOT NULL DEFAULT 'text',
+			content    BYTEA,
+			created_at TIMESTAMPTZ DEFAULT NOW()
+		);
 	`)
 	return err
 }
@@ -106,4 +125,59 @@ func (p *PostgresDB) DeletePeer(ctx context.Context, id string) error {
 func (p *PostgresDB) Close() error {
 	p.pool.Close()
 	return nil
+}
+
+func (p *PostgresDB) SendMessage(ctx context.Context, msg Message) error {
+	_, err := p.pool.Exec(ctx,
+		`INSERT INTO messages (id, from_peer, to_peer, workspace, payload) VALUES ($1,$2,$3,$4,$5)`,
+		msg.ID, msg.FromPeer, msg.ToPeer, msg.Workspace, msg.Payload)
+	return err
+}
+
+func (p *PostgresDB) PollMessages(ctx context.Context, workspace, toPeer string, limit int) ([]Message, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT id, from_peer, to_peer, workspace, payload, created_at
+		 FROM messages WHERE workspace=$1 AND to_peer=$2 ORDER BY created_at ASC LIMIT $3`,
+		workspace, toPeer, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var msgs []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.FromPeer, &m.ToPeer, &m.Workspace, &m.Payload, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
+func (p *PostgresDB) DeleteMessage(ctx context.Context, id string) error {
+	res, err := p.pool.Exec(ctx, `DELETE FROM messages WHERE id=$1`, id)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return fmt.Errorf("message not found: %s", id)
+	}
+	return nil
+}
+
+func (p *PostgresDB) SaveArtifact(ctx context.Context, a Artifact) error {
+	_, err := p.pool.Exec(ctx,
+		`INSERT INTO artifacts (id, workspace, name, kind, content) VALUES ($1,$2,$3,$4,$5)`,
+		a.ID, a.Workspace, a.Name, a.Kind, a.Content)
+	return err
+}
+
+func (p *PostgresDB) GetArtifact(ctx context.Context, id string) (*Artifact, error) {
+	row := p.pool.QueryRow(ctx,
+		`SELECT id, workspace, name, kind, content, created_at FROM artifacts WHERE id=$1`, id)
+	var a Artifact
+	if err := row.Scan(&a.ID, &a.Workspace, &a.Name, &a.Kind, &a.Content, &a.CreatedAt); err != nil {
+		return nil, fmt.Errorf("artifact not found: %w", err)
+	}
+	return &a, nil
 }
