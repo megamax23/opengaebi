@@ -93,3 +93,32 @@ func TestMessages_PayloadTooLarge(t *testing.T) {
 		t.Errorf("expected 413, got %d", rec.Code)
 	}
 }
+
+func TestMessages_Broadcast(t *testing.T) {
+	srv := newTestServer(t)
+	h := srv.Handler()
+
+	body := `{"workspace":"bcastws","from":"orchestrator","to":"","payload":"모든 에이전트에게"}`
+	req := httptest.NewRequest("POST", "/v1/messages", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d — %s", rec.Code, rec.Body.String())
+	}
+
+	req2 := httptest.NewRequest("GET", "/v1/messages?workspace=bcastws&to=bot-a", nil)
+	req2.Header.Set("Authorization", "Bearer test-api-key")
+	rec2 := httptest.NewRecorder()
+	h.ServeHTTP(rec2, req2)
+
+	var resp struct {
+		Messages []map[string]any `json:"messages"`
+	}
+	json.NewDecoder(rec2.Body).Decode(&resp)
+	if len(resp.Messages) != 1 {
+		t.Errorf("expected 1 broadcast message, got %d", len(resp.Messages))
+	}
+}

@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -54,7 +55,15 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workspace is required"})
 		return
 	}
-	peers, err := s.db.ListPeers(r.Context(), workspace)
+
+	var peers []db.Peer
+	var err error
+	if rawTags := r.URL.Query().Get("tags"); rawTags != "" {
+		tags := strings.Split(rawTags, ",")
+		peers, err = s.db.ListPeersByTags(r.Context(), workspace, tags)
+	} else {
+		peers, err = s.db.ListPeers(r.Context(), workspace)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

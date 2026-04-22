@@ -114,6 +114,23 @@ func (s *SQLiteDB) DeletePeer(ctx context.Context, id string) error {
 	return nil
 }
 
+func (s *SQLiteDB) ListPeersByTags(ctx context.Context, workspace string, tags []string) ([]Peer, error) {
+	peers, err := s.ListPeers(ctx, workspace)
+	if err != nil {
+		return nil, err
+	}
+	if len(tags) == 0 {
+		return peers, nil
+	}
+	var filtered []Peer
+	for _, p := range peers {
+		if hasAllTags(p.Tags, tags) {
+			filtered = append(filtered, p)
+		}
+	}
+	return filtered, nil
+}
+
 func (s *SQLiteDB) Close() error {
 	return s.db.Close()
 }
@@ -128,7 +145,7 @@ func (s *SQLiteDB) SendMessage(ctx context.Context, msg Message) error {
 func (s *SQLiteDB) PollMessages(ctx context.Context, workspace, toPeer string, limit int) ([]Message, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, from_peer, to_peer, workspace, payload, created_at
-		 FROM messages WHERE workspace=? AND to_peer=? ORDER BY created_at ASC LIMIT ?`,
+		 FROM messages WHERE workspace=? AND (to_peer=? OR to_peer='') ORDER BY created_at ASC LIMIT ?`,
 		workspace, toPeer, limit)
 	if err != nil {
 		return nil, err
@@ -183,6 +200,19 @@ func (s *SQLiteDB) GetArtifact(ctx context.Context, id string) (*Artifact, error
 		a.CreatedAt = createdAt.Time
 	}
 	return &a, nil
+}
+
+func hasAllTags(peerTags, required []string) bool {
+	set := make(map[string]struct{}, len(peerTags))
+	for _, t := range peerTags {
+		set[t] = struct{}{}
+	}
+	for _, t := range required {
+		if _, ok := set[t]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 type scanner interface {

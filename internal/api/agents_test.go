@@ -81,3 +81,47 @@ func TestAgents_Unauthorized(t *testing.T) {
 		t.Errorf("expected 401, got %d", rec.Code)
 	}
 }
+
+func TestAgents_ListByTags(t *testing.T) {
+	srv := newTestServer(t)
+	h := srv.Handler()
+
+	for _, body := range []string{
+		`{"workspace":"tagws","name":"bot-a","kind":"agent","tags":["role:worker","lang:go"]}`,
+		`{"workspace":"tagws","name":"bot-b","kind":"agent","tags":["role:worker","lang:python"]}`,
+		`{"workspace":"tagws","name":"bot-c","kind":"agent","tags":["role:coordinator"]}`,
+	} {
+		req := httptest.NewRequest("POST", "/v1/agents", bytes.NewBufferString(body))
+		req.Header.Set("Authorization", "Bearer test-api-key")
+		req.Header.Set("Content-Type", "application/json")
+		h.ServeHTTP(httptest.NewRecorder(), req)
+	}
+
+	req := httptest.NewRequest("GET", "/v1/agents?workspace=tagws&tags=role:worker", nil)
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d — %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Peers []map[string]any `json:"peers"`
+	}
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if len(resp.Peers) != 2 {
+		t.Errorf("expected 2 peers with role:worker, got %d", len(resp.Peers))
+	}
+
+	req2 := httptest.NewRequest("GET", "/v1/agents?workspace=tagws&tags=role:worker,lang:go", nil)
+	req2.Header.Set("Authorization", "Bearer test-api-key")
+	rec2 := httptest.NewRecorder()
+	h.ServeHTTP(rec2, req2)
+	var resp2 struct {
+		Peers []map[string]any `json:"peers"`
+	}
+	json.NewDecoder(rec2.Body).Decode(&resp2)
+	if len(resp2.Peers) != 1 {
+		t.Errorf("expected 1 peer with role:worker+lang:go, got %d", len(resp2.Peers))
+	}
+}

@@ -104,6 +104,7 @@ func toolsList() []map[string]any {
 				"properties": map[string]any{
 					"workspace": map[string]any{"type": "string", "description": "워크스페이스"},
 					"kind":      map[string]any{"type": "string", "description": "에이전트 종류 (session|agent)"},
+					"tags":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "태그 필터 (AND 조건, 예: [\"role:worker\",\"lang:go\"])"},
 				},
 				"required": []string{"workspace"},
 			},
@@ -119,6 +120,7 @@ func toolsList() []map[string]any {
 					"name":      map[string]any{"type": "string", "description": "파일명"},
 					"kind":      map[string]any{"type": "string", "description": "text 또는 code"},
 					"content":   map[string]any{"type": "string"},
+					"broadcast": map[string]any{"type": "boolean", "description": "true이면 워크스페이스 전체에 변경 알림 전송"},
 				},
 				"required": []string{"workspace", "name", "content"},
 			},
@@ -181,7 +183,22 @@ func (s *Server) toolFindAgents(r *http.Request, args map[string]any) (any, any)
 		return nil, map[string]any{"code": -32602, "message": "workspace is required"}
 	}
 
-	peers, err := s.db.ListPeers(r.Context(), workspace)
+	var tags []string
+	if rawTags, ok := args["tags"].([]any); ok {
+		for _, t := range rawTags {
+			if s, ok := t.(string); ok {
+				tags = append(tags, s)
+			}
+		}
+	}
+
+	var peers []db.Peer
+	var err error
+	if len(tags) > 0 {
+		peers, err = s.db.ListPeersByTags(r.Context(), workspace, tags)
+	} else {
+		peers, err = s.db.ListPeers(r.Context(), workspace)
+	}
 	if err != nil {
 		return nil, map[string]any{"code": -32603, "message": err.Error()}
 	}
@@ -218,6 +235,9 @@ func (s *Server) toolPublishChange(r *http.Request, args map[string]any) (any, a
 		kind = "text"
 	}
 
+	broadcast, _ := args["broadcast"].(bool)
+	from, _ := args["from"].(string)
+
 	art := db.Artifact{
 		ID:        uuid.New().String(),
 		Workspace: workspace,
@@ -229,9 +249,25 @@ func (s *Server) toolPublishChange(r *http.Request, args map[string]any) (any, a
 		return nil, map[string]any{"code": -32603, "message": err.Error()}
 	}
 
+	summary := fmt.Sprintf("아티팩트 저장 완료 (id=%s, name=%s)", art.ID, art.Name)
+	if broadcast {
+		bcastMsg := db.Message{
+			ID:        uuid.New().String(),
+			FromPeer:  from,
+			ToPeer:    "",
+			Workspace: workspace,
+			Payload:   fmt.Sprintf(`{"event":"artifact_updated","artifact_id":"%s","name":"%s"}`, art.ID, art.Name),
+		}
+		if err := s.db.SendMessage(r.Context(), bcastMsg); err != nil {
+			summary += fmt.Sprintf(" (브로드캐스트 실패: %s)", err.Error())
+		} else {
+			summary += " — 브로드캐스트 전송 완료"
+		}
+	}
+
 	return map[string]any{
 		"content": []map[string]any{
-			{"type": "text", "text": fmt.Sprintf("아티팩트 저장 완료 (id=%s, name=%s)", art.ID, art.Name)},
+			{"type": "text", "text": summary},
 		},
 	}, nil
 }

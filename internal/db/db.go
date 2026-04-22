@@ -38,9 +38,14 @@ type DB interface {
 	RegisterPeer(ctx context.Context, peer Peer) error
 	GetPeer(ctx context.Context, workspace, name string) (*Peer, error)
 	ListPeers(ctx context.Context, workspace string) ([]Peer, error)
+	// ListPeersByTags returns peers that have ALL specified tags (AND logic).
+	// If tags is empty, returns all peers in workspace (same as ListPeers).
+	ListPeersByTags(ctx context.Context, workspace string, tags []string) ([]Peer, error)
 	DeletePeer(ctx context.Context, id string) error
 
 	SendMessage(ctx context.Context, msg Message) error
+	// PollMessages returns direct messages (to_peer==toPeer) AND broadcast
+	// messages (to_peer=="") in the workspace, ordered by created_at ASC.
 	PollMessages(ctx context.Context, workspace, toPeer string, limit int) ([]Message, error)
 	DeleteMessage(ctx context.Context, id string) error
 

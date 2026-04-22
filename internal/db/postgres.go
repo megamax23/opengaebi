@@ -122,6 +122,23 @@ func (p *PostgresDB) DeletePeer(ctx context.Context, id string) error {
 	return nil
 }
 
+func (p *PostgresDB) ListPeersByTags(ctx context.Context, workspace string, tags []string) ([]Peer, error) {
+	peers, err := p.ListPeers(ctx, workspace)
+	if err != nil {
+		return nil, err
+	}
+	if len(tags) == 0 {
+		return peers, nil
+	}
+	var filtered []Peer
+	for _, peer := range peers {
+		if hasAllTags(peer.Tags, tags) {
+			filtered = append(filtered, peer)
+		}
+	}
+	return filtered, nil
+}
+
 func (p *PostgresDB) Close() error {
 	p.pool.Close()
 	return nil
@@ -137,7 +154,7 @@ func (p *PostgresDB) SendMessage(ctx context.Context, msg Message) error {
 func (p *PostgresDB) PollMessages(ctx context.Context, workspace, toPeer string, limit int) ([]Message, error) {
 	rows, err := p.pool.Query(ctx,
 		`SELECT id, from_peer, to_peer, workspace, payload, created_at
-		 FROM messages WHERE workspace=$1 AND to_peer=$2 ORDER BY created_at ASC LIMIT $3`,
+		 FROM messages WHERE workspace=$1 AND (to_peer=$2 OR to_peer='') ORDER BY created_at ASC LIMIT $3`,
 		workspace, toPeer, limit)
 	if err != nil {
 		return nil, err
