@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/opengaebi/opengaebi/internal/db"
+	"github.com/opengaebi/opengaebi/internal/registry"
 )
 
 type registerAgentReq struct {
@@ -46,6 +47,16 @@ func (s *Server) registerAgent(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	if s.registry != nil {
+		s.registry.PushPeer(r.Context(), registry.PeerPayload{
+			ID:   peer.ID,
+			Name: peer.Name,
+			Kind: peer.Kind,
+			Tags: peer.Tags,
+			IP:   peer.IP,
+			Port: peer.Port,
+		})
+	}
 	writeJSON(w, http.StatusCreated, map[string]string{"id": peer.ID})
 }
 
@@ -79,6 +90,9 @@ func (s *Server) deleteAgent(w http.ResponseWriter, r *http.Request) {
 	if err := s.db.DeletePeer(r.Context(), id); err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 		return
+	}
+	if s.registry != nil {
+		s.registry.DeletePeer(r.Context(), id)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

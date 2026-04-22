@@ -9,12 +9,13 @@ import (
 )
 
 type Config struct {
-	DBType      string
-	DatabaseURL string
-	Port        int
-	APIKey      string
-	BaseURL     string
-	RegistryURL string
+	DBType        string
+	DatabaseURL   string
+	Port          int
+	APIKey        string
+	BaseURL       string
+	RegistryURL   string
+	RegistryAPIKey string
 }
 
 func Load() Config {
@@ -32,7 +33,8 @@ func Load() Config {
 		Port:        port,
 		APIKey:      apiKey,
 		BaseURL:     baseURL,
-		RegistryURL: getEnv("REGISTRY_URL", ""),
+		RegistryURL:    getEnv("REGISTRY_URL", ""),
+		RegistryAPIKey: getEnv("REGISTRY_API_KEY", ""),
 	}
 }
 

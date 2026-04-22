@@ -16,7 +16,7 @@ func newTestServer(t *testing.T) *api.Server {
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { store.Close() })
-	return api.New(store, "test-api-key", "http://localhost:7777")
+	return api.New(store, "test-api-key", "http://localhost:7777", nil)
 }
 
 func TestAuth_ValidKey(t *testing.T) {

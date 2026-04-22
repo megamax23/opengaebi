@@ -8,6 +8,7 @@ import (
 	"github.com/opengaebi/opengaebi/internal/api"
 	"github.com/opengaebi/opengaebi/internal/config"
 	"github.com/opengaebi/opengaebi/internal/db"
+	"github.com/opengaebi/opengaebi/internal/registry"
 )
 
 func main() {
@@ -19,7 +20,8 @@ func main() {
 	}
 	defer store.Close()
 
-	srv := api.New(store, cfg.APIKey, cfg.BaseURL)
+	regClient := registry.NewClient(cfg.RegistryURL, cfg.RegistryAPIKey)
+	srv := api.New(store, cfg.APIKey, cfg.BaseURL, regClient)
 
 	log.Printf("Opengaebi Bridge starting on :%d (db=%s)", cfg.Port, cfg.DBType)
 	keyPreview := cfg.APIKey[:min(8, len(cfg.APIKey))]

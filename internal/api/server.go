@@ -9,23 +9,26 @@ import (
 	"github.com/opengaebi/opengaebi/internal/a2a"
 	"github.com/opengaebi/opengaebi/internal/db"
 	"github.com/opengaebi/opengaebi/internal/mcp"
+	"github.com/opengaebi/opengaebi/internal/registry"
 )
 
 type Server struct {
-	db      db.DB
-	apiKey  string
-	baseURL string
-	mcpSrv  *mcp.Server
-	a2aHndl *a2a.Handler
+	db       db.DB
+	apiKey   string
+	baseURL  string
+	mcpSrv   *mcp.Server
+	a2aHndl  *a2a.Handler
+	registry *registry.Client
 }
 
-func New(store db.DB, apiKey string, baseURL string) *Server {
+func New(store db.DB, apiKey string, baseURL string, regClient *registry.Client) *Server {
 	return &Server{
-		db:      store,
-		apiKey:  apiKey,
-		baseURL: baseURL,
-		mcpSrv:  mcp.New(store),
-		a2aHndl: a2a.New(store, baseURL),
+		db:       store,
+		apiKey:   apiKey,
+		baseURL:  baseURL,
+		mcpSrv:   mcp.New(store),
+		a2aHndl:  a2a.New(store, baseURL),
+		registry: regClient,
 	}
 }
 
